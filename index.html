@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Financeiro Link Informática · Dashboard ao vivo</title>
+<script src="../chart.umd.min.js"></script>
+<style>
+:root {
+  --bg: #0a0e1a; --bg2: #131829; --panel: #1a2138;
+  --text: #e8ecf5; --muted: #8b95b0; --accent: #4ade80;
+  --danger: #f87171; --warn: #fbbf24; --info: #60a5fa; --purple: #c084fc;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Inter',-apple-system,sans-serif;
+  font-feature-settings: 'tnum'; line-height: 1.5; }
+.container { max-width: 1280px; margin: 0 auto; padding: 24px 16px; }
+header { border-bottom: 1px solid #2a3148; padding-bottom: 16px; margin-bottom: 24px;
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+header h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
+header .sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+.actions { display: flex; gap: 8px; align-items: center; }
+button { background: var(--accent); color: #0a0e1a; border: 0; padding: 10px 16px;
+  border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 14px; }
+button:hover { opacity: 0.9; }
+.month-picker { display: flex; gap: 6px; margin-bottom: 24px; flex-wrap: wrap; }
+.month-btn { background: var(--panel); color: var(--text); border: 1px solid #2a3148;
+  padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.15s; }
+.month-btn:hover { border-color: #3b4366; }
+.month-btn.active { background: var(--info); color: #0a0e1a; border-color: var(--info); }
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr));
+  gap: 12px; margin-bottom: 24px; }
+.kpi { background: var(--panel); border-radius: 10px; padding: 16px; border: 1px solid #2a3148; }
+.kpi .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+.kpi .value { font-size: 22px; font-weight: 700; margin-top: 6px; }
+.kpi .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.kpi.green .value { color: var(--accent); }
+.kpi.red .value { color: var(--danger); }
+.kpi.yellow .value { color: var(--warn); }
+.kpi.blue .value { color: var(--info); }
+.kpi.purple .value { color: var(--purple); }
+.row { display: grid; gap: 16px; margin-bottom: 16px; }
+.row.two { grid-template-columns: 1fr 1fr; }
+@media (max-width: 880px) { .row.two { grid-template-columns: 1fr; } }
+.card { background: var(--panel); border: 1px solid #2a3148; border-radius: 10px; padding: 20px; }
+.card h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+.card .hint { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tbl th { text-align: left; color: var(--muted); font-weight: 600; text-transform: uppercase;
+  font-size: 10px; letter-spacing: 0.06em; padding: 8px 10px; border-bottom: 1px solid #2a3148; }
+.tbl td { padding: 8px 10px; border-bottom: 1px solid #21283c; }
+.tbl td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+.tbl tr:last-child td { border-bottom: none; }
+.tbl tr:hover td { background: #20283f; }
+.tbl .total { font-weight: 700; border-top: 2px solid #3b4366; }
+.bar-row { display: grid; grid-template-columns: 180px 1fr 110px; gap: 10px; align-items: center;
+  padding: 8px 0; border-bottom: 1px solid #21283c; font-size: 13px; }
+.bar-bg { height: 18px; background: #21283c; border-radius: 4px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
+.bar-row .v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.loading { text-align: center; padding: 60px 20px; color: var(--muted); }
+.loading .spinner { display: inline-block; width: 32px; height: 32px;
+  border: 3px solid #2a3148; border-top-color: var(--accent); border-radius: 50%;
+  animation: spin 0.8s linear infinite; margin-bottom: 16px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.tab-nav { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid #2a3148; }
+.tab-btn { background: transparent; color: var(--muted); border: 0; padding: 12px 18px;
+  cursor: pointer; font-size: 14px; font-weight: 500; border-bottom: 2px solid transparent;
+  margin-bottom: -1px; }
+.tab-btn.active { color: var(--text); border-bottom-color: var(--accent); }
+.chart-box { height: 280px; position: relative; }
+.last-update { color: var(--muted); font-size: 11px; }
+.error { color: var(--danger); padding: 16px; background: rgba(248,113,113,0.1);
+  border-radius: 8px; margin: 16px 0; }
+</style>
+</head>
+<body>
+<div class="container">
+<header>
+  <div>
+    <h1>💰 Financeiro Link Informática</h1>
+    <div class="sub">Dashboard ao vivo · puxa direto das suas planilhas Google Sheets</div>
+  </div>
+  <div class="actions">
+    <span class="last-update" id="lastUpdate">—</span>
+    <button onclick="carregar()">🔄 Atualizar</button>
+  </div>
+</header>
+
+<div class="tab-nav">
+  <button class="tab-btn active" data-tab="resumo" onclick="trocarAba('resumo')">📊 Resumo</button>
+  <button class="tab-btn" data-tab="pj" onclick="trocarAba('pj')">🏢 Jurídico (Link)</button>
+  <button class="tab-btn" data-tab="pf" onclick="trocarAba('pf')">👤 Pessoal (Raul)</button>
+</div>
+
+<div id="loading" class="loading">
+  <div class="spinner"></div>
+  <div>Carregando planilhas online...</div>
+</div>
+
+<div id="conteudo" style="display:none;">
+
+  <div class="month-picker" id="mesPicker"></div>
+
+  <!-- ABA RESUMO -->
+  <div class="tab-content" id="tab-resumo">
+    <div class="kpi-grid" id="kpisResumo"></div>
+    <div class="row two">
+      <div class="card">
+        <h3>💸 Para onde vai o dinheiro</h3>
+        <div class="hint" id="hintGastos">Soma PJ + PF do período selecionado</div>
+        <div id="barrasGastos"></div>
+      </div>
+      <div class="card">
+        <h3>📈 Evolução mensal</h3>
+        <div class="chart-box"><canvas id="grafEvolucao"></canvas></div>
+      </div>
+    </div>
+    <div class="row two" style="margin-top:16px;">
+      <div class="card">
+        <h3>💰 Entradas Pix (planilha)</h3>
+        <div class="hint">O que você anotou que recebeu de transferência</div>
+        <div id="entradasPJ"></div>
+      </div>
+      <div class="card">
+        <h3>🚨 Alertas</h3>
+        <div id="alertas"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ABA PJ -->
+  <div class="tab-content" id="tab-pj" style="display:none;">
+    <div class="kpi-grid" id="kpisPJ"></div>
+    <div class="card">
+      <h3>Pagamentos do mês</h3>
+      <div class="hint" id="hintPJ"></div>
+      <table class="tbl" id="tablaPJ"><thead><tr>
+        <th>Descrição</th><th>Vencimento</th><th>Pago em</th>
+        <th>Origem</th><th>Destino</th><th class="num">Valor</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+
+  <!-- ABA PF -->
+  <div class="tab-content" id="tab-pf" style="display:none;">
+    <div class="kpi-grid" id="kpisPF"></div>
+    <div class="card">
+      <h3>Pagamentos do mês</h3>
+      <div class="hint" id="hintPF"></div>
+      <table class="tbl" id="tablaPF"><thead><tr>
+        <th>Descrição</th><th>Vencimento</th><th>Pago em</th>
+        <th>Origem</th><th>Destino</th><th class="num">Valor</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script>
+const PJ_ID = '1_F-skyPq1lxkAvGZXo-xpnZuIZcP5GxJ0EZwfpER5Qc';
+const PF_ID = '1PvGrNSWF_QSuKjVPM75SgrCkDixqt9GPND0_RnwccI4';
+const MESES = ['Janeiro 2026','Fevereiro 2026','Março 2026','Abril 2026','Maio 2026'];
+const MESES_SHORT = ['Jan','Fev','Mar','Abr','Mai'];
+
+let dadosPJ = {}, dadosPF = {};
+let mesSelecionado = MESES[MESES.length-1]; // padrão: último mês
+let chartEvolucao = null;
+
+function fmtBR(v) {
+  if (v === null || v === undefined || isNaN(v)) return 'R$ 0';
+  return 'R$ ' + Number(v).toLocaleString('pt-BR', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+}
+function fmtBR2(v) {
+  if (v === null || v === undefined || isNaN(v)) return 'R$ 0,00';
+  return 'R$ ' + Number(v).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+async function fetchAba(sheetId, sheetName) {
+  const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
+  const r = await fetch(url);
+  const t = await r.text();
+  // remove o prefixo "/*O_o*/" e "google.visualization.Query.setResponse(" + ")"
+  const json = JSON.parse(t.substring(t.indexOf('(')+1, t.lastIndexOf(')')));
+  const cols = json.table.cols;
+  const rows = json.table.rows || [];
+  return rows.map(r => {
+    const cells = r.c || [];
+    return {
+      descricao: cells[0]?.v || '',
+      vencimento: cells[1]?.f || '',
+      valor_prev: cells[2]?.v || 0,
+      data_pgto: cells[3]?.f || '',
+      valor_pago: cells[4]?.v || 0,
+      banco_origem: cells[5]?.v || '',
+      banco_destino: cells[6]?.v || '',
+      // entradas Pix (PJ: cols 8,9,10 / PF: cols 9,10,11)
+      entrada_pj: cells[8]?.v || null,
+      entrada_pj_data: cells[9]?.f || '',
+      entrada_pj_banco: cells[10]?.v || '',
+      entrada_pf: cells[9]?.v || null,
+      entrada_pf_data: cells[10]?.f || '',
+      entrada_pf_banco: cells[11]?.v || '',
+    };
+  }).filter(r => r.descricao || r.valor_pago || r.entrada_pj || r.entrada_pf);
+}
+
+async function carregar() {
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('conteudo').style.display = 'none';
+
+  try {
+    const promessas = [];
+    for (const mes of MESES) {
+      promessas.push(fetchAba(PJ_ID, mes).then(r => ({mes, tipo:'pj', rows:r})));
+      promessas.push(fetchAba(PF_ID, mes).then(r => ({mes, tipo:'pf', rows:r})));
+    }
+    const todos = await Promise.allSettled(promessas);
+
+    dadosPJ = {}; dadosPF = {};
+    for (const p of todos) {
+      if (p.status !== 'fulfilled') continue;
+      const {mes, tipo, rows} = p.value;
+      if (tipo === 'pj') dadosPJ[mes] = rows;
+      else dadosPF[mes] = rows;
+    }
+
+    document.getElementById('lastUpdate').textContent = 'Atualizado: ' + new Date().toLocaleTimeString('pt-BR');
+    montarPickerMeses();
+    renderizar();
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('conteudo').style.display = 'block';
+  } catch (e) {
+    document.getElementById('loading').innerHTML = '<div class="error">Erro ao carregar: ' + e.message + '</div>';
+  }
+}
+
+function montarPickerMeses() {
+  const picker = document.getElementById('mesPicker');
+  picker.innerHTML = '';
+  MESES.forEach((mes, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'month-btn' + (mes === mesSelecionado ? ' active' : '');
+    btn.textContent = MESES_SHORT[i] + '/26';
+    btn.onclick = () => { mesSelecionado = mes; montarPickerMeses(); renderizar(); };
+    picker.appendChild(btn);
+  });
+  // total/4
+  const btn = document.createElement('button');
+  btn.className = 'month-btn' + (mesSelecionado === '__TOTAL__' ? ' active' : '');
+  btn.textContent = 'Total Jan-Abr';
+  btn.onclick = () => { mesSelecionado = '__TOTAL__'; montarPickerMeses(); renderizar(); };
+  picker.appendChild(btn);
+}
+
+function linhasDoMes(dados, mes) {
+  if (mes === '__TOTAL__') {
+    return ['Janeiro 2026','Fevereiro 2026','Março 2026','Abril 2026']
+      .flatMap(m => dados[m] || []);
+  }
+  return dados[mes] || [];
+}
+
+function categorizar(desc) {
+  const d = (desc||'').toLowerCase();
+  if (!d) return 'outros';
+  if (/maicon|samuel|daniel|ramon|paulo|paulinho|pagamento fran|júlia|julia|auxilio|adventista|estagi/.test(d)) return 'folha';
+  if (/retirada (no lugar|moto|viagem)/.test(d)) return 'reserva';
+  if (/diarista|dona /.test(d)) return 'limpeza';
+  if (/anuidade|juros|iof|tarifa|cheque especial/.test(d)) return 'encargo';
+  if (/aluguel|fazenda park|park hotel/.test(d)) return 'aluguel';
+  if (/internet|telefone|vivo|tim|claro|nio|sanepar|lume|água|agua|sanepar|gás|gas/.test(d)) return 'operacional';
+  if (/escola|adventista|jiu jitsu|aula teclado|pilates|unimed|amil|psico|pediatra/.test(d)) return 'familia';
+  if (/mastercard|cartao master|fatura cartao|netflix|spotify|uber/.test(d)) return 'pessoal';
+  if (/anderson|monica|mmr|eder|plug|mg indu|fagundez|iplay|pampuch|maximus|servicecell|ceprox|vip repair|epic imports/.test(d)) return 'mercadoria';
+  if (/ipva|iptu|rfb|tributos|federais/.test(d)) return 'tributo';
+  return 'outros';
+}
+
+const CAT_NOMES = {
+  folha: 'Folha (8 funcionários)',
+  reserva: 'Reservas / Cofrinhos',
+  limpeza: 'Limpeza',
+  encargo: 'Encargos financeiros',
+  aluguel: 'Aluguel',
+  operacional: 'Operacional (água/luz/internet)',
+  familia: 'Família (escola, saúde, etc)',
+  pessoal: 'Pessoal Raul (cartão, lazer)',
+  mercadoria: 'Custo de mercadoria',
+  tributo: 'Tributos (IPVA, IPTU, RFB)',
+  outros: 'Outros'
+};
+const CAT_CORES = {
+  folha: '#c084fc', reserva: '#4ade80', limpeza: '#94a3b8', encargo: '#f59e0b',
+  aluguel: '#fb7185', operacional: '#fbbf24', familia: '#f87171', pessoal: '#f87171',
+  mercadoria: '#60a5fa', tributo: '#a78bfa', outros: '#6b7280'
+};
+
+function calcularMetricas() {
+  const linhasPJ = linhasDoMes(dadosPJ, mesSelecionado);
+  const linhasPF = linhasDoMes(dadosPF, mesSelecionado);
+
+  let pagoPJ = 0, pagoPF = 0;
+  let entradaPJ = 0, entradaPF = 0;
+  const gastoCat = {};
+
+  linhasPJ.forEach(l => {
+    const v = Number(l.valor_pago) || 0;
+    if (v > 0) {
+      pagoPJ += v;
+      const cat = categorizar(l.descricao);
+      gastoCat[cat] = (gastoCat[cat] || 0) + v;
+    }
+    if (l.entrada_pj && Number(l.entrada_pj) > 0) entradaPJ += Number(l.entrada_pj);
+  });
+  linhasPF.forEach(l => {
+    const v = Number(l.valor_pago) || 0;
+    if (v > 0) {
+      pagoPF += v;
+      const cat = categorizar(l.descricao);
+      gastoCat[cat] = (gastoCat[cat] || 0) + v;
+    }
+    if (l.entrada_pf && Number(l.entrada_pf) > 0) entradaPF += Number(l.entrada_pf);
+  });
+
+  return {
+    pagoPJ, pagoPF, total: pagoPJ + pagoPF,
+    entradaPJ, entradaPF,
+    gastoCat,
+    qtdPJ: linhasPJ.filter(l => l.valor_pago > 0).length,
+    qtdPF: linhasPF.filter(l => l.valor_pago > 0).length,
+  };
+}
+
+function renderizar() {
+  renderResumo();
+  renderTabela('pj');
+  renderTabela('pf');
+}
+
+function renderResumo() {
+  const m = calcularMetricas();
+
+  // KPIs
+  const kpis = document.getElementById('kpisResumo');
+  kpis.innerHTML = `
+    <div class="kpi blue"><div class="label">Pago PJ (Link)</div><div class="value">${fmtBR(m.pagoPJ)}</div><div class="sub">${m.qtdPJ} lançamentos</div></div>
+    <div class="kpi purple"><div class="label">Pago PF (Raul)</div><div class="value">${fmtBR(m.pagoPF)}</div><div class="sub">${m.qtdPF} lançamentos</div></div>
+    <div class="kpi red"><div class="label">Total pago</div><div class="value">${fmtBR(m.total)}</div><div class="sub">PJ + PF</div></div>
+    <div class="kpi green"><div class="label">Entradas registradas</div><div class="value">${fmtBR(m.entradaPJ + m.entradaPF)}</div><div class="sub">PJ ${fmtBR(m.entradaPJ)} · PF ${fmtBR(m.entradaPF)}</div></div>
+  `;
+
+  // Barras por categoria
+  const total = Object.values(m.gastoCat).reduce((a,b)=>a+b, 0);
+  const cats = Object.entries(m.gastoCat).sort((a,b)=>b[1]-a[1]);
+  const barras = document.getElementById('barrasGastos');
+  barras.innerHTML = cats.map(([k,v]) => {
+    const pct = total ? v/total*100 : 0;
+    return `<div class="bar-row">
+      <div>${CAT_NOMES[k] || k}</div>
+      <div>
+        <div class="bar-bg"><div class="bar-fill" style="width:${pct.toFixed(1)}%; background:${CAT_CORES[k]||'#666'}"></div></div>
+        <div style="color:var(--muted); font-size:11px; margin-top:2px">${pct.toFixed(1)}%</div>
+      </div>
+      <div class="v">${fmtBR(v)}</div>
+    </div>`;
+  }).join('');
+
+  // Entradas Pix
+  const linhasPJ = linhasDoMes(dadosPJ, mesSelecionado);
+  const entradas = linhasPJ.filter(l => l.entrada_pj && Number(l.entrada_pj) > 0);
+  const ent = document.getElementById('entradasPJ');
+  if (entradas.length === 0) {
+    ent.innerHTML = '<div style="color:var(--muted); font-size:13px; padding:12px 0;">Nenhuma entrada Pix registrada neste período.</div>';
+  } else {
+    ent.innerHTML = '<table class="tbl"><thead><tr><th>Data</th><th>Banco origem</th><th class="num">Valor</th></tr></thead><tbody>' +
+      entradas.map(e => `<tr><td>${e.entrada_pj_data}</td><td>${e.entrada_pj_banco}</td><td class="num">${fmtBR2(e.entrada_pj)}</td></tr>`).join('') +
+      `<tr class="total"><td colspan="2">TOTAL</td><td class="num">${fmtBR2(entradas.reduce((a,b)=>a+Number(b.entrada_pj),0))}</td></tr>` +
+      '</tbody></table>';
+  }
+
+  // Alertas
+  const alertas = [];
+  if (mesSelecionado !== '__TOTAL__' && m.qtdPJ === 0 && m.qtdPF === 0) {
+    alertas.push({tipo:'info', msg:'Nenhum pagamento registrado neste mês. Talvez ainda não tenha sido preenchido.'});
+  }
+  if (m.gastoCat.encargo && m.gastoCat.encargo > 2000) {
+    alertas.push({tipo:'warn', msg:`Encargos financeiros altos: ${fmtBR(m.gastoCat.encargo)} (juros, IOF, tarifas). Dá pra negociar.`});
+  }
+  if (m.gastoCat.reserva && m.gastoCat.reserva > 0) {
+    alertas.push({tipo:'ok', msg:`✅ Você guardou ${fmtBR(m.gastoCat.reserva)} em reservas/cofrinhos. Bom!`});
+  }
+  if (m.entradaPJ === 0 && mesSelecionado !== '__TOTAL__') {
+    alertas.push({tipo:'warn', msg:'Nenhuma entrada Pix registrada no mês — lembre de anotar as transferências grandes.'});
+  }
+  document.getElementById('alertas').innerHTML = alertas.length
+    ? alertas.map(a => `<div style="padding:10px; border-radius:6px; margin-bottom:8px; font-size:13px; background:rgba(${a.tipo==='warn'?'251,191,36':a.tipo==='ok'?'74,222,128':'96,165,250'},0.1); border-left:3px solid ${a.tipo==='warn'?'var(--warn)':a.tipo==='ok'?'var(--accent)':'var(--info)'};">${a.msg}</div>`).join('')
+    : '<div style="color:var(--muted); font-size:13px;">Nenhum alerta. Tudo certo.</div>';
+
+  // Gráfico evolução
+  const evolutionPJ = MESES.slice(0,4).map(mes => {
+    return (dadosPJ[mes]||[]).reduce((a,l) => a + (Number(l.valor_pago)||0), 0);
+  });
+  const evolutionPF = MESES.slice(0,4).map(mes => {
+    return (dadosPF[mes]||[]).reduce((a,l) => a + (Number(l.valor_pago)||0), 0);
+  });
+  if (chartEvolucao) chartEvolucao.destroy();
+  chartEvolucao = new Chart(document.getElementById('grafEvolucao'), {
+    type: 'line',
+    data: {
+      labels: MESES_SHORT.slice(0,4),
+      datasets: [
+        {label:'PJ Link', data:evolutionPJ, borderColor:'#60a5fa', backgroundColor:'rgba(96,165,250,0.1)', tension:0.3, borderWidth:2, fill:true},
+        {label:'PF Raul', data:evolutionPF, borderColor:'#c084fc', backgroundColor:'rgba(192,132,252,0.1)', tension:0.3, borderWidth:2, fill:true},
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#e8ecf5'}}},
+      scales:{
+        x:{ticks:{color:'#8b95b0'}, grid:{color:'rgba(255,255,255,0.05)'}},
+        y:{ticks:{color:'#8b95b0', callback:v=>'R$ '+v.toLocaleString('pt-BR')}, grid:{color:'rgba(255,255,255,0.05)'}}
+      }
+    }
+  });
+}
+
+function renderTabela(tipo) {
+  const dados = tipo === 'pj' ? dadosPJ : dadosPF;
+  const linhas = linhasDoMes(dados, mesSelecionado);
+  const pagas = linhas.filter(l => Number(l.valor_pago) > 0);
+  const naoPagas = linhas.filter(l => !l.valor_pago && Number(l.valor_prev) > 0);
+
+  // KPIs do tipo
+  const total = pagas.reduce((a,l) => a + Number(l.valor_pago), 0);
+  const pendente = naoPagas.reduce((a,l) => a + Number(l.valor_prev), 0);
+  const kpis = document.getElementById('kpis' + tipo.toUpperCase());
+  kpis.innerHTML = `
+    <div class="kpi blue"><div class="label">Pago no mês</div><div class="value">${fmtBR(total)}</div><div class="sub">${pagas.length} lançamentos</div></div>
+    <div class="kpi yellow"><div class="label">Pendente</div><div class="value">${fmtBR(pendente)}</div><div class="sub">${naoPagas.length} contas</div></div>
+  `;
+
+  // tabela
+  const tbody = document.querySelector('#tabla' + tipo.toUpperCase() + ' tbody');
+  tbody.innerHTML = pagas.sort((a,b) => {
+    // ordena por data de pagamento
+    const da = a.data_pgto.split('/').reverse().join('');
+    const db = b.data_pgto.split('/').reverse().join('');
+    return da.localeCompare(db);
+  }).map(l => `
+    <tr>
+      <td>${l.descricao||''}</td>
+      <td>${l.vencimento||''}</td>
+      <td>${l.data_pgto||''}</td>
+      <td>${l.banco_origem||''}</td>
+      <td>${l.banco_destino||''}</td>
+      <td class="num">${fmtBR2(l.valor_pago)}</td>
+    </tr>
+  `).join('') +
+  `<tr class="total"><td colspan="5">TOTAL PAGO</td><td class="num">${fmtBR2(total)}</td></tr>`;
+
+  document.getElementById('hint' + tipo.toUpperCase()).textContent =
+    `${pagas.length} pagamentos efetivados · ${naoPagas.length} contas previstas mas ainda não pagas`;
+}
+
+function trocarAba(t) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+  document.querySelectorAll('.tab-content').forEach(c => c.style.display = c.id === 'tab-' + t ? 'block' : 'none');
+}
+
+carregar();
+// auto-refresh a cada 5 min
+setInterval(carregar, 5 * 60 * 1000);
+</script>
+</body>
+</html>
