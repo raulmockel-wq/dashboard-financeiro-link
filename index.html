@@ -16,8 +16,27 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" type="image/png" href="icon-192.png">
 
-<title>Dashboard Financeiro · v3.2</title>
-<script src="chart.umd.min.js"></script>
+<title>Dashboard Financeiro · v3.3</title>
+<script>
+// Log de debug super precoce — garante que veremos QUALQUER coisa
+(function() {
+  function dbg(msg) {
+    try {
+      var el = document.getElementById('debugLines');
+      if (el) el.innerHTML += '<br>' + new Date().toLocaleTimeString('pt-BR') + ' · ' + msg;
+    } catch(e) {}
+  }
+  window.dbg = dbg;
+  window.addEventListener('DOMContentLoaded', function() { dbg('✅ DOM carregado'); });
+  window.addEventListener('error', function(e) {
+    dbg('❌ ERRO JS: ' + (e.message || e.error || 'desconhecido') + ' @ ' + (e.filename||'') + ':' + (e.lineno||''));
+  });
+  window.addEventListener('unhandledrejection', function(e) {
+    dbg('❌ Promise rejeitada: ' + (e.reason && e.reason.message || e.reason));
+  });
+})();
+</script>
+<script src="chart.umd.min.js" onerror="window.dbg && window.dbg('❌ chart.js NÃO carregou')" onload="window.dbg && window.dbg('✅ chart.js OK')"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
@@ -212,7 +231,7 @@ button.ghost:hover { background: var(--panel); border-color: #3b4366; }
 <div class="container">
 <header>
   <div>
-    <h1>💼 Dashboard Financeiro <span class="badge">v3.2</span></h1>
+    <h1>💼 Dashboard Financeiro <span class="badge">v3.3</span></h1>
     <div class="sub">Lê suas planilhas Google Sheets ao vivo · atualiza sozinho</div>
   </div>
   <div class="actions">
@@ -229,7 +248,11 @@ button.ghost:hover { background: var(--panel); border-color: #3b4366; }
 
 <div id="loading" class="loading">
   <div class="spinner"></div>
-  <div>Lendo as planilhas direto do Google Sheets...</div>
+  <div>Carregando...</div>
+  <div id="debugLog" style="margin-top:20px; text-align: left; max-width: 600px; margin-left: auto; margin-right: auto; padding: 16px; background: var(--panel); border-radius: 8px; font-family: monospace; font-size: 11px; line-height: 1.6; color: var(--muted);">
+    <div style="color:var(--green); font-weight: bold; margin-bottom: 8px;">📋 Debug log:</div>
+    <div id="debugLines">⏳ Aguardando JavaScript iniciar...</div>
+  </div>
 </div>
 
 <div id="conteudo" style="display:none;">
@@ -443,14 +466,14 @@ function parsearBlocos(rows) {
 
 // ==================== CARREGAMENTO ====================
 async function carregar(forceNotify) {
+  window.dbg && window.dbg('🚀 carregar() chamado');
+  const log = (m) => window.dbg && window.dbg(m);
   const loadingEl = document.getElementById('loading');
+  if (!loadingEl) { log('❌ #loading não encontrado'); return; }
   loadingEl.style.display = 'block';
-  loadingEl.innerHTML = '<div class="spinner"></div><div>Lendo as planilhas direto do Google Sheets...</div><div id="logsCarregamento" style="margin-top:18px; font-size:11px; color:var(--muted); font-family: monospace; text-align: left; max-width: 500px; margin-left: auto; margin-right: auto;"></div>';
   document.getElementById('conteudo').style.display = 'none';
-  const logEl = document.getElementById('logsCarregamento');
-  const log = (msg) => { if (logEl) logEl.innerHTML += msg + '<br>'; };
 
-  log('🔄 Iniciando carregamento...');
+  log('🔄 Iniciando carregamento de 10 abas (5 PJ + 5 PF)...');
   let sucessos = 0, falhas = 0;
   const erros = [];
 
@@ -722,7 +745,12 @@ function escapeHtml(s) {
   return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-carregar();
+window.dbg && window.dbg('✅ Script principal carregado');
+try {
+  carregar();
+} catch (e) {
+  window.dbg && window.dbg('❌ ERRO ao chamar carregar(): ' + e.message);
+}
 setInterval(() => carregar(false), 5 * 60 * 1000);
 </script>
 </body>
