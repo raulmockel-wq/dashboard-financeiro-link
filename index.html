@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="Financeiro">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" type="image/png" href="icon-192.png">
-<title>Dashboard Financeiro · v2.5</title>
+<title>Dashboard Financeiro · v2.6</title>
 <script src="chart.umd.min.js"></script>
 <script>
 // Debug precoce — captura QUALQUER erro JS antes de qualquer outra coisa
@@ -167,7 +167,7 @@ button.ghost { background: transparent; color: var(--text); border: 1px solid va
 <header>
   <div>
     <h1>💼 Dashboard Financeiro
-      <span style="font-size:11px; color:var(--green); margin-left:8px; font-weight:600;">v2.5</span></h1>
+      <span style="font-size:11px; color:var(--green); margin-left:8px; font-weight:600;">v2.6</span></h1>
     <div class="sub">Lê suas planilhas Google Sheets ao vivo · atualiza sozinho</div>
   </div>
   <div class="actions">
@@ -496,7 +496,6 @@ function renderTipo(tipo, dados) {
   document.getElementById('conteudo' + upper).innerHTML = html;
 }
 
-function renderTabelaBloco_OLD(titulo, tagClass, bloco) {
 
 function renderTabelaBloco(titulo, tagClass, bloco) {
   if (!bloco || bloco.linhas.length === 0) {
