@@ -16,7 +16,7 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" type="image/png" href="icon-192.png">
 
-<title>Dashboard Financeiro · v3.0</title>
+<title>Dashboard Financeiro · v3.1</title>
 <script src="chart.umd.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -212,7 +212,7 @@ button.ghost:hover { background: var(--panel); border-color: #3b4366; }
 <div class="container">
 <header>
   <div>
-    <h1>💼 Dashboard Financeiro <span class="badge">v3.0</span></h1>
+    <h1>💼 Dashboard Financeiro <span class="badge">v3.1</span></h1>
     <div class="sub">Lê suas planilhas Google Sheets ao vivo · atualiza sozinho</div>
   </div>
   <div class="actions">
@@ -304,9 +304,25 @@ function parseDinheiro(s) {
 // ==================== FETCH GOOGLE SHEETS ====================
 async function fetchAba(sheetId, sheetName) {
   const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
-  const r = await fetch(url + '&t=' + Date.now()); // cache buster
-  const t = await r.text();
-  const json = JSON.parse(t.substring(t.indexOf('(')+1, t.lastIndexOf(')')));
+  // timeout de 15s pra não ficar carregando pra sempre
+  const ctrl = new AbortController();
+  const timeoutId = setTimeout(() => ctrl.abort(), 15000);
+  let t;
+  try {
+    const r = await fetch(url + '&t=' + Date.now(), {signal: ctrl.signal, cache: 'no-store'});
+    clearTimeout(timeoutId);
+    if (!r.ok) throw new Error(`HTTP ${r.status} - ${r.statusText}`);
+    t = await r.text();
+  } catch (e) {
+    clearTimeout(timeoutId);
+    throw new Error(`Falhou ao buscar "${sheetName}": ${e.message}`);
+  }
+  let json;
+  try {
+    json = JSON.parse(t.substring(t.indexOf('(')+1, t.lastIndexOf(')')));
+  } catch (e) {
+    throw new Error(`Resposta inválida do Google Sheets pra "${sheetName}"`);
+  }
   const rows = json.table.rows || [];
   return rows.map(r => {
     const c = r.c || [];
@@ -413,33 +429,72 @@ function parsearBlocos(rows) {
 
 // ==================== CARREGAMENTO ====================
 async function carregar(forceNotify) {
-  document.getElementById('loading').style.display = 'block';
+  const loadingEl = document.getElementById('loading');
+  loadingEl.style.display = 'block';
+  loadingEl.innerHTML = '<div class="spinner"></div><div>Lendo as planilhas direto do Google Sheets...</div><div id="logsCarregamento" style="margin-top:18px; font-size:11px; color:var(--muted); font-family: monospace; text-align: left; max-width: 500px; margin-left: auto; margin-right: auto;"></div>';
   document.getElementById('conteudo').style.display = 'none';
+  const logEl = document.getElementById('logsCarregamento');
+  const log = (msg) => { if (logEl) logEl.innerHTML += msg + '<br>'; };
+
+  log('🔄 Iniciando carregamento...');
+  let sucessos = 0, falhas = 0;
+  const erros = [];
 
   try {
     const promessas = [];
     for (const mes of MESES) {
-      promessas.push(fetchAba(PJ_ID, mes).then(r => ({mes, tipo:'pj', rows:r})).catch(()=>null));
-      promessas.push(fetchAba(PF_ID, mes).then(r => ({mes, tipo:'pf', rows:r})).catch(()=>null));
+      promessas.push(
+        fetchAba(PJ_ID, mes)
+          .then(r => ({mes, tipo:'pj', rows:r, ok:true}))
+          .catch(e => ({mes, tipo:'pj', erro: e.message, ok:false}))
+      );
+      promessas.push(
+        fetchAba(PF_ID, mes)
+          .then(r => ({mes, tipo:'pf', rows:r, ok:true}))
+          .catch(e => ({mes, tipo:'pf', erro: e.message, ok:false}))
+      );
     }
-    const todos = await Promise.allSettled(promessas);
+    const todos = await Promise.all(promessas);
 
     dadosPJ = {}; dadosPF = {};
     for (const p of todos) {
-      if (p.status !== 'fulfilled' || !p.value) continue;
-      const {mes, tipo, rows} = p.value;
-      const parsed = parsearBlocos(rows);
-      if (tipo === 'pj') dadosPJ[mes] = parsed;
-      else dadosPF[mes] = parsed;
+      if (p.ok) {
+        sucessos++;
+        const parsed = parsearBlocos(p.rows);
+        if (p.tipo === 'pj') dadosPJ[p.mes] = parsed;
+        else dadosPF[p.mes] = parsed;
+      } else {
+        falhas++;
+        erros.push(`${p.tipo.toUpperCase()} ${p.mes}: ${p.erro}`);
+      }
+    }
+    log(`✅ ${sucessos} sucessos · ❌ ${falhas} falhas`);
+    if (falhas > 0) {
+      log('⚠️ Erros: ' + erros.slice(0,3).join(' | '));
+    }
+
+    if (sucessos === 0) {
+      throw new Error('Nenhuma planilha carregou. Verifique conexão e se as planilhas ainda estão compartilhadas como "qualquer um com link pode ver".');
     }
 
     document.getElementById('lastUpdate').textContent = 'Atualizado às ' + new Date().toLocaleTimeString('pt-BR');
     montarPickerMeses();
     renderizar();
-    document.getElementById('loading').style.display = 'none';
+    loadingEl.style.display = 'none';
     document.getElementById('conteudo').style.display = 'block';
   } catch (e) {
-    document.getElementById('loading').innerHTML = '<div class="error">Erro ao carregar: ' + e.message + '</div>';
+    loadingEl.innerHTML = `
+      <div class="error">
+        <strong>❌ Erro ao carregar dashboard</strong><br><br>
+        ${e.message}<br><br>
+        <button onclick="carregar()" style="background:var(--info); color:#fff;">Tentar de novo</button>
+      </div>
+      <div style="margin-top:20px; padding: 16px; background: var(--panel); border-radius: 8px; text-align: left; max-width: 600px; margin-left: auto; margin-right: auto; font-size: 13px;">
+        <strong>Diagnóstico:</strong><br>
+        • Sucessos: ${sucessos} | Falhas: ${falhas}<br>
+        ${erros.length ? '• Erros: ' + erros.slice(0,5).join('<br>• ') : ''}
+      </div>
+    `;
     console.error(e);
   }
 }
