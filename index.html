@@ -14,8 +14,35 @@
 <meta name="apple-mobile-web-app-title" content="Financeiro">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" type="image/png" href="icon-192.png">
-<title>Dashboard Financeiro · v2.4</title>
+<title>Dashboard Financeiro · v2.5</title>
 <script src="chart.umd.min.js"></script>
+<script>
+// Debug precoce — captura QUALQUER erro JS antes de qualquer outra coisa
+(function(){
+  var lines = [];
+  function dbg(msg){
+    lines.push(new Date().toLocaleTimeString('pt-BR') + ' · ' + msg);
+    try {
+      var el = document.getElementById('dbgPanel');
+      if (el) el.innerHTML = lines.join('<br>');
+      else setTimeout(function(){
+        var el2 = document.getElementById('dbgPanel');
+        if (el2) el2.innerHTML = lines.join('<br>');
+      }, 100);
+    } catch(e){}
+  }
+  window.dbg = dbg;
+  dbg('🚀 JS inicial rodou');
+  window.addEventListener('DOMContentLoaded', function(){ dbg('✅ DOM carregado'); });
+  window.addEventListener('load', function(){ dbg('✅ Window load completo'); });
+  window.addEventListener('error', function(e){
+    dbg('❌ ERRO: ' + (e.message || e.error) + ' @ linha ' + (e.lineno||'?'));
+  });
+  window.addEventListener('unhandledrejection', function(e){
+    dbg('❌ Promise rejeitada: ' + (e.reason && e.reason.message || e.reason));
+  });
+})();
+</script>
 <style>
 :root {
   --bg: #0a0e1a; --bg2: #131829; --panel: #1a2138; --panel2: #20283f;
@@ -140,7 +167,7 @@ button.ghost { background: transparent; color: var(--text); border: 1px solid va
 <header>
   <div>
     <h1>💼 Dashboard Financeiro
-      <span style="font-size:11px; color:var(--green); margin-left:8px; font-weight:600;">v2.4</span></h1>
+      <span style="font-size:11px; color:var(--green); margin-left:8px; font-weight:600;">v2.5</span></h1>
     <div class="sub">Lê suas planilhas Google Sheets ao vivo · atualiza sozinho</div>
   </div>
   <div class="actions">
@@ -157,7 +184,7 @@ button.ghost { background: transparent; color: var(--text); border: 1px solid va
 
 <div id="loading" class="loading">
   <div class="spinner"></div>
-  <div>Lendo as planilhas direto do Google Sheets...</div>
+  <div>Lendo as planilhas direto do Google Sheets...</div><div id="dbgPanel" style="margin-top:20px; padding:12px; background:#1a2138; border-radius:8px; font-family:monospace; font-size:11px; color:#8b95b0; text-align:left; max-width:600px; margin-left:auto; margin-right:auto;">⏳</div>
 </div>
 
 <div id="conteudo" style="display:none;">
