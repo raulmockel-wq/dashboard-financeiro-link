@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Dashboard Financeiro · Link Informática · v2.2</title>
+<title>Dashboard Financeiro · v2.3</title>
 <script src="chart.umd.min.js"></script>
 <style>
 :root {
@@ -131,8 +131,8 @@ button.ghost { background: transparent; color: var(--text); border: 1px solid va
 <div class="container">
 <header>
   <div>
-    <h1>💼 Dashboard Financeiro · Link Informática
-      <span style="font-size:11px; color:var(--green); margin-left:8px; font-weight:600;">v2.2</span></h1>
+    <h1>💼 Dashboard Financeiro
+      <span style="font-size:11px; color:var(--green); margin-left:8px; font-weight:600;">v2.3</span></h1>
     <div class="sub">Lê suas planilhas Google Sheets ao vivo · atualiza sozinho</div>
   </div>
   <div class="actions">
@@ -247,21 +247,24 @@ async function fetchAba(sheetId, sheetName) {
 function parsearBlocos(rows) {
   /*
     Estrutura de cada aba:
-    - linha 0: cabeçalho "Descrição, Vencimento, Valor, Data Pgto, Valor Pago, Banco Orig, Banco Dest"
-    - depois: linhas com descrição
-    - linha de TOTAL: descrição vazia + valor presente
-    - próximo bloco
-    - linha de TOTAL GERAL: igual
+    - linha 0: cabeçalho
+    - bloco 1 (fixas): linhas com descrição
+    - linha de TOTAL bloco 1 (sem desc + valor): salva como bloco1.totalDeclaradoPago
+    - bloco 2 (aleatórias): linhas com descrição
+    - linha de TOTAL bloco 2: salva como bloco2.totalDeclaradoPago
+    - linha de TOTAL GERAL: salva como totalGeralDeclarado
 
-    Estratégia:
-      1. Pular linha 0 (cabeçalho)
-      2. Iterar linhas. Quando a descrição for vazia e o "valor" tiver número > 0,
-         é uma linha de total → fecha o bloco atual e começa novo.
-      3. Primeiro bloco = "fixas". Segundo = "aleatórias".
+    Coletamos TANTO a SOMA calculada das linhas QUANTO o TOTAL declarado pela
+    planilha. Se divergirem, mostra warning (planilha tem células fora da fórmula).
   */
-  const blocos = [{nome: 'fixas', linhas: [], totalPrev: 0, totalPago: 0}];
+  const blocos = [{
+    nome: 'fixas', linhas: [],
+    somaPrev: 0, somaPago: 0,
+    declaradoPrev: 0, declaradoPago: 0
+  }];
   let blocoAtual = 0;
-  let totalGeralPrev = 0, totalGeralPago = 0;
+  let totalGeralDeclaradoPrev = 0, totalGeralDeclaradoPago = 0;
+  let totaisDetectados = 0;  // quantas linhas de total já vimos
 
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
@@ -271,29 +274,36 @@ function parsearBlocos(rows) {
     const isVazia = !desc && valorPrev === 0 && valorPago === 0;
     if (isVazia) continue;
 
-    // pular cabeçalho repetido
     if (desc.toLowerCase() === 'descrição') continue;
 
-    // detectar linha de TOTAL:
-    //   (a) sem descrição mas com valor, OU
-    //   (b) descrição começando com "Total" (ex: "Total Aleatorios", "Total Geral")
     const ehLinhaTotal = (!desc && (valorPrev > 0 || valorPago > 0))
                        || /^total/i.test(desc);
     if (ehLinhaTotal) {
-      // primeira linha de total = fim do bloco "fixas" → começa "aleatorias"
-      // segunda linha de total (ou mais) = total geral
-      if (blocoAtual === 0) {
+      totaisDetectados++;
+      if (totaisDetectados === 1) {
+        // total do bloco fixas
+        blocos[0].declaradoPrev = valorPrev;
+        blocos[0].declaradoPago = valorPago;
+        // começa bloco aleatórias
         blocoAtual = 1;
-        blocos.push({nome: 'aleatorias', linhas: [], totalPrev: 0, totalPago: 0});
+        blocos.push({
+          nome: 'aleatorias', linhas: [],
+          somaPrev: 0, somaPago: 0,
+          declaradoPrev: 0, declaradoPago: 0
+        });
+      } else if (totaisDetectados === 2) {
+        // pode ser total bloco aleatórias OU total geral (depende se tem mais)
+        // por enquanto assume total aleatórias e atualiza se vier mais
+        blocos[1].declaradoPrev = valorPrev;
+        blocos[1].declaradoPago = valorPago;
       } else {
-        // total geral (último)
-        totalGeralPrev = valorPrev;
-        totalGeralPago = valorPago;
+        // 3+ = total geral
+        totalGeralDeclaradoPrev = valorPrev;
+        totalGeralDeclaradoPago = valorPago;
       }
       continue;
     }
 
-    // linha de dado normal
     blocos[blocoAtual].linhas.push({
       descricao: desc,
       vencimento: (r[1] || '').toString().trim(),
@@ -303,15 +313,21 @@ function parsearBlocos(rows) {
       bancoOrigem: (r[5] || '').toString().trim(),
       bancoDestino: (r[6] || '').toString().trim(),
     });
-    blocos[blocoAtual].totalPrev += valorPrev;
-    blocos[blocoAtual].totalPago += valorPago;
+    blocos[blocoAtual].somaPrev += valorPrev;
+    blocos[blocoAtual].somaPago += valorPago;
+  }
+
+  // Se tem só 2 totais detectados (não 3), o segundo é tanto total bloco 2 quanto total geral
+  if (totaisDetectados === 2 && blocos[1]) {
+    totalGeralDeclaradoPrev = blocos[0].declaradoPrev + blocos[1].declaradoPrev;
+    totalGeralDeclaradoPago = blocos[0].declaradoPago + blocos[1].declaradoPago;
   }
 
   return {
-    fixas: blocos[0] || {linhas: [], totalPrev: 0, totalPago: 0},
-    aleatorias: blocos[1] || {linhas: [], totalPrev: 0, totalPago: 0},
-    totalGeralPrev,
-    totalGeralPago,
+    fixas: blocos[0] || {linhas: [], somaPrev: 0, somaPago: 0, declaradoPrev: 0, declaradoPago: 0},
+    aleatorias: blocos[1] || {linhas: [], somaPrev: 0, somaPago: 0, declaradoPrev: 0, declaradoPago: 0},
+    totalGeralDeclaradoPrev,
+    totalGeralDeclaradoPago,
   };
 }
 
@@ -370,43 +386,73 @@ function renderizar() {
 function renderTipo(tipo, dados) {
   const m = dados[mesSelecionado];
   const upper = tipo.toUpperCase();
+  // limpar warnings antigos
+  const oldWarn = document.getElementById('warn-' + tipo);
+  if (oldWarn) oldWarn.remove();
   if (!m) {
     document.getElementById('kpis' + upper).innerHTML = '<div class="empty">Sem dados para esse mês.</div>';
     document.getElementById('conteudo' + upper).innerHTML = '';
     return;
   }
 
-  // KPIs
-  const totalFixasPrev = m.fixas.totalPrev;
-  const totalFixasPago = m.fixas.totalPago;
-  const totalAleaPrev = m.aleatorias.totalPrev;
-  const totalAleaPago = m.aleatorias.totalPago;
-  const totalPrev = totalFixasPrev + totalAleaPrev;
-  const totalPago = totalFixasPago + totalAleaPago;
-  const pendente = totalPrev - totalPago;
+  // KPIs — usamos os TOTAIS DECLARADOS pela planilha (não nossa soma)
+  const fixasPago = m.fixas.declaradoPago;
+  const aleaPago = m.aleatorias.declaradoPago;
+  const totalPago = m.totalGeralDeclaradoPago;
+
+  // PENDENTE = soma do "Valor" das linhas onde "Valor Pago" == 0
+  let pendenteValor = 0, pendenteContas = 0;
+  for (const bloco of [m.fixas, m.aleatorias]) {
+    for (const l of bloco.linhas) {
+      if (l.valorPrevisto > 0 && l.valorPago === 0) {
+        pendenteValor += l.valorPrevisto;
+        pendenteContas++;
+      }
+    }
+  }
+
+  // Divergências entre nossa soma e total declarado pela planilha
+  const diffFixas = Math.round((m.fixas.somaPago - m.fixas.declaradoPago) * 100) / 100;
+  const diffAlea = Math.round((m.aleatorias.somaPago - m.aleatorias.declaradoPago) * 100) / 100;
+  const warnings = [];
+  if (Math.abs(diffFixas) > 0.01) {
+    warnings.push(`Despesas Fixas: planilha mostra R$ ${fmtBR2(m.fixas.declaradoPago).replace('R$ ','')}, mas a soma das ${m.fixas.linhas.length} linhas dá R$ ${fmtBR2(m.fixas.somaPago).replace('R$ ','')} (diferença de ${diffFixas > 0 ? '+' : ''}${fmtBR2(diffFixas).replace('R$ ','')}). Pode ter linha fora da fórmula.`);
+  }
+  if (Math.abs(diffAlea) > 0.01) {
+    warnings.push(`Despesas Aleatórias: planilha mostra R$ ${fmtBR2(m.aleatorias.declaradoPago).replace('R$ ','')}, mas a soma das ${m.aleatorias.linhas.length} linhas dá R$ ${fmtBR2(m.aleatorias.somaPago).replace('R$ ','')} (diferença de ${diffAlea > 0 ? '+' : ''}${fmtBR2(diffAlea).replace('R$ ','')}). Pode ter linha fora da fórmula.`);
+  }
 
   document.getElementById('kpis' + upper).innerHTML = `
     <div class="kpi blue">
-      <div class="label">Despesas Fixas</div>
-      <div class="value">${fmtBR2(totalFixasPago)}</div>
-      <div class="sub">${m.fixas.linhas.filter(l=>l.valorPago>0).length} pagas · prev. ${fmtBR2(totalFixasPrev)}</div>
+      <div class="label">📌 Despesas Fixas</div>
+      <div class="value">${fmtBR2(fixasPago)}</div>
+      <div class="sub">${m.fixas.linhas.filter(l=>l.valorPago>0).length} de ${m.fixas.linhas.length} pagas</div>
     </div>
     <div class="kpi purple">
-      <div class="label">Despesas Aleatórias</div>
-      <div class="value">${fmtBR2(totalAleaPago)}</div>
-      <div class="sub">${m.aleatorias.linhas.filter(l=>l.valorPago>0).length} pagas · prev. ${fmtBR2(totalAleaPrev)}</div>
+      <div class="label">✨ Despesas Aleatórias</div>
+      <div class="value">${fmtBR2(aleaPago)}</div>
+      <div class="sub">${m.aleatorias.linhas.filter(l=>l.valorPago>0).length} de ${m.aleatorias.linhas.length} pagas</div>
     </div>
     <div class="kpi green">
-      <div class="label">Total pago no mês</div>
+      <div class="label">✅ Total pago no mês</div>
       <div class="value">${fmtBR2(totalPago)}</div>
-      <div class="sub">${m.fixas.linhas.filter(l=>l.valorPago>0).length + m.aleatorias.linhas.filter(l=>l.valorPago>0).length} lançamentos</div>
+      <div class="sub">Fixas + Aleatórias (da planilha)</div>
     </div>
     <div class="kpi yellow">
-      <div class="label">Pendente</div>
-      <div class="value">${fmtBR2(pendente)}</div>
-      <div class="sub">${m.fixas.linhas.filter(l=>l.valorPrevisto>0 && !l.valorPago).length + m.aleatorias.linhas.filter(l=>l.valorPrevisto>0 && !l.valorPago).length} contas a pagar</div>
+      <div class="label">⏳ Pendente</div>
+      <div class="value">${fmtBR2(pendenteValor)}</div>
+      <div class="sub">${pendenteContas} contas a pagar</div>
     </div>
   `;
+
+  // Renderiza avisos de divergência
+  if (warnings.length > 0) {
+    const warnHtml = warnings.map(w =>
+      `<div style="padding:12px 16px; border-radius:8px; margin-bottom:10px; background:rgba(251,191,36,0.1); border-left:4px solid var(--warn); font-size:13px;">⚠️ ${w}</div>`
+    ).join('');
+    document.getElementById('kpis' + upper).insertAdjacentHTML('afterend',
+      `<div id="warn-${tipo}">${warnHtml}</div>`);
+  }
 
   // Tabelas detalhadas
   let html = '';
@@ -414,6 +460,8 @@ function renderTipo(tipo, dados) {
   html += renderTabelaBloco('Despesas Aleatórias', 'aleatoria', m.aleatorias);
   document.getElementById('conteudo' + upper).innerHTML = html;
 }
+
+function renderTabelaBloco_OLD(titulo, tagClass, bloco) {
 
 function renderTabelaBloco(titulo, tagClass, bloco) {
   if (!bloco || bloco.linhas.length === 0) {
@@ -426,14 +474,14 @@ function renderTabelaBloco(titulo, tagClass, bloco) {
   let html = `<div class="section">
     <div class="section-title">
       <span>${tipoEmoji} ${titulo}</span>
-      <span class="right">Pago ${fmtBR2(bloco.totalPago)} · Previsto ${fmtBR2(bloco.totalPrev)}</span>
+      <span class="right">Total declarado: ${fmtBR2(bloco.declaradoPago)}</span>
     </div>
     <div class="card" style="padding: 0; overflow-x: auto;">
     <table class="tbl">
     <thead><tr>
       <th>Descrição</th><th>Vencimento</th><th>Pago em</th>
       <th>Origem</th><th>Destino</th>
-      <th class="num">Previsto</th><th class="num">Pago</th><th>Status</th>
+      <th class="num">Valor</th><th class="num">Pago</th><th>Status</th>
     </tr></thead><tbody>`;
   for (const l of bloco.linhas) {
     const pago = l.valorPago > 0;
@@ -453,20 +501,26 @@ function renderTabelaBloco(titulo, tagClass, bloco) {
     </tr>`;
   }
   html += `<tr class="total">
-    <td colspan="5">TOTAL ${titulo.toUpperCase()}</td>
-    <td class="num">${fmtBR2(bloco.totalPrev)}</td>
-    <td class="num">${fmtBR2(bloco.totalPago)}</td>
+    <td colspan="5">SOMA DAS ${bloco.linhas.length} LINHAS</td>
+    <td class="num">${fmtBR2(bloco.somaPrev)}</td>
+    <td class="num">${fmtBR2(bloco.somaPago)}</td>
     <td></td>
-  </tr></tbody></table></div></div>`;
+  </tr>
+  <tr class="total" style="background: var(--bg2);">
+    <td colspan="5">TOTAL DECLARADO NA PLANILHA</td>
+    <td class="num">${fmtBR2(bloco.declaradoPrev)}</td>
+    <td class="num">${fmtBR2(bloco.declaradoPago)}</td>
+    <td></td>
+  </tr>
+  </tbody></table></div></div>`;
   return html;
 }
 
 function renderResumo() {
-  // KPIs comparativos PJ vs PF
   const mPJ = dadosPJ[mesSelecionado];
   const mPF = dadosPF[mesSelecionado];
-  const pagoPJ = mPJ ? (mPJ.fixas.totalPago + mPJ.aleatorias.totalPago) : 0;
-  const pagoPF = mPF ? (mPF.fixas.totalPago + mPF.aleatorias.totalPago) : 0;
+  const pagoPJ = mPJ ? mPJ.totalGeralDeclaradoPago : 0;
+  const pagoPF = mPF ? mPF.totalGeralDeclaradoPago : 0;
   document.getElementById('kpisResumo').innerHTML = `
     <div class="kpi blue"><div class="label">Pago PJ (Link) no mês</div>
       <div class="value">${fmtBR2(pagoPJ)}</div></div>
@@ -479,11 +533,11 @@ function renderResumo() {
   // Gráfico evolução
   const evoPJ = MESES.map(mes => {
     const d = dadosPJ[mes];
-    return d ? d.fixas.totalPago + d.aleatorias.totalPago : 0;
+    return d ? d.totalGeralDeclaradoPago : 0;
   });
   const evoPF = MESES.map(mes => {
     const d = dadosPF[mes];
-    return d ? d.fixas.totalPago + d.aleatorias.totalPago : 0;
+    return d ? d.totalGeralDeclaradoPago : 0;
   });
   if (chartEvolucao) chartEvolucao.destroy();
   chartEvolucao = new Chart(document.getElementById('grafEvolucao'), {
