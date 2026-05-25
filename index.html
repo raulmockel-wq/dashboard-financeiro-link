@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Dashboard Financeiro · Link Informática · v2.1</title>
+<title>Dashboard Financeiro · Link Informática · v2.2</title>
 <script src="chart.umd.min.js"></script>
 <style>
 :root {
@@ -132,7 +132,7 @@ button.ghost { background: transparent; color: var(--text); border: 1px solid va
 <header>
   <div>
     <h1>💼 Dashboard Financeiro · Link Informática
-      <span style="font-size:11px; color:var(--green); margin-left:8px; font-weight:600;">v2.1</span></h1>
+      <span style="font-size:11px; color:var(--green); margin-left:8px; font-weight:600;">v2.2</span></h1>
     <div class="sub">Lê suas planilhas Google Sheets ao vivo · atualiza sozinho</div>
   </div>
   <div class="actions">
@@ -274,12 +274,15 @@ function parsearBlocos(rows) {
     // pular cabeçalho repetido
     if (desc.toLowerCase() === 'descrição') continue;
 
-    // detectar linha de TOTAL: sem descrição mas com valor
-    const eTotal = !desc && (valorPrev > 0 || valorPago > 0);
-    if (eTotal) {
-      // se já estamos no bloco "aleatórias" e essa é a 2ª linha de total → total geral
+    // detectar linha de TOTAL:
+    //   (a) sem descrição mas com valor, OU
+    //   (b) descrição começando com "Total" (ex: "Total Aleatorios", "Total Geral")
+    const ehLinhaTotal = (!desc && (valorPrev > 0 || valorPago > 0))
+                       || /^total/i.test(desc);
+    if (ehLinhaTotal) {
+      // primeira linha de total = fim do bloco "fixas" → começa "aleatorias"
+      // segunda linha de total (ou mais) = total geral
       if (blocoAtual === 0) {
-        // fim do bloco "fixas", começa "aleatórias"
         blocoAtual = 1;
         blocos.push({nome: 'aleatorias', linhas: [], totalPrev: 0, totalPago: 0});
       } else {
