@@ -16,7 +16,7 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" type="image/png" href="icon-192.png">
 
-<title>Dashboard Financeiro · v3.3</title>
+<title>Dashboard Financeiro · v3.4</title>
 <script>
 // Log de debug super precoce — garante que veremos QUALQUER coisa
 (function() {
@@ -231,7 +231,7 @@ button.ghost:hover { background: var(--panel); border-color: #3b4366; }
 <div class="container">
 <header>
   <div>
-    <h1>💼 Dashboard Financeiro <span class="badge">v3.3</span></h1>
+    <h1>💼 Dashboard Financeiro <span class="badge">v3.4</span></h1>
     <div class="sub">Lê suas planilhas Google Sheets ao vivo · atualiza sozinho</div>
   </div>
   <div class="actions">
@@ -632,8 +632,6 @@ function renderTipo(tipo, dados) {
   html += renderTabelaBloco('Despesas Aleatórias', 'aleatoria', m.aleatorias);
   document.getElementById('conteudo' + upper).innerHTML = html;
 }
-
-function renderTabelaBloco_OLD(titulo, tagClass, bloco) {
 
 function renderTabelaBloco(titulo, tagClass, bloco) {
   if (!bloco || bloco.linhas.length === 0) {
