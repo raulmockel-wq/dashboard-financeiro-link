@@ -16,7 +16,7 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" type="image/png" href="icon-192.png">
 
-<title>Dashboard Financeiro · v3.1</title>
+<title>Dashboard Financeiro · v3.2</title>
 <script src="chart.umd.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -212,7 +212,7 @@ button.ghost:hover { background: var(--panel); border-color: #3b4366; }
 <div class="container">
 <header>
   <div>
-    <h1>💼 Dashboard Financeiro <span class="badge">v3.1</span></h1>
+    <h1>💼 Dashboard Financeiro <span class="badge">v3.2</span></h1>
     <div class="sub">Lê suas planilhas Google Sheets ao vivo · atualiza sozinho</div>
   </div>
   <div class="actions">
@@ -302,41 +302,55 @@ function parseDinheiro(s) {
 }
 
 // ==================== FETCH GOOGLE SHEETS ====================
+// Parser CSV simples (RFC 4180 — aspas duplas, quebras de linha)
+function parseCsv(texto) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let i = 0;
+  let inQuotes = false;
+  while (i < texto.length) {
+    const c = texto[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (texto[i+1] === '"') { field += '"'; i += 2; continue; }
+        inQuotes = false; i++; continue;
+      }
+      field += c; i++; continue;
+    }
+    if (c === '"') { inQuotes = true; i++; continue; }
+    if (c === ',') { row.push(field); field = ''; i++; continue; }
+    if (c === '\n' || c === '\r') {
+      if (c === '\r' && texto[i+1] === '\n') i++;
+      row.push(field); rows.push(row); row = []; field = ''; i++; continue;
+    }
+    field += c; i++;
+  }
+  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+  return rows;
+}
+
 async function fetchAba(sheetId, sheetName) {
-  const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
-  // timeout de 15s pra não ficar carregando pra sempre
+  // Usa export CSV (mais simples e robusto que gviz JSON)
+  const url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&sheet=${encodeURIComponent(sheetName)}&t=${Date.now()}`;
   const ctrl = new AbortController();
-  const timeoutId = setTimeout(() => ctrl.abort(), 15000);
-  let t;
+  const timeoutId = setTimeout(() => ctrl.abort(), 20000);
   try {
-    const r = await fetch(url + '&t=' + Date.now(), {signal: ctrl.signal, cache: 'no-store'});
+    const r = await fetch(url, {signal: ctrl.signal, cache: 'no-store', redirect: 'follow'});
     clearTimeout(timeoutId);
-    if (!r.ok) throw new Error(`HTTP ${r.status} - ${r.statusText}`);
-    t = await r.text();
-  } catch (e) {
-    clearTimeout(timeoutId);
-    throw new Error(`Falhou ao buscar "${sheetName}": ${e.message}`);
-  }
-  let json;
-  try {
-    json = JSON.parse(t.substring(t.indexOf('(')+1, t.lastIndexOf(')')));
-  } catch (e) {
-    throw new Error(`Resposta inválida do Google Sheets pra "${sheetName}"`);
-  }
-  const rows = json.table.rows || [];
-  return rows.map(r => {
-    const c = r.c || [];
-    return [0,1,2,3,4,5,6,7].map(i => {
-      const cell = c[i];
-      if (!cell) return null;
-      // pra valor (cols 2 e 4), usar .v (número limpo)
-      // pra data (cols 1 e 3), usar .f (formato dd/mm/yyyy)
-      // pra texto (cols 0, 5, 6, 7), usar .v ou .f
-      if (i === 1 || i === 3) return cell.f || cell.v || '';
-      if (i === 2 || i === 4) return cell.v !== null && cell.v !== undefined ? cell.v : null;
-      return cell.v || '';
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const texto = await r.text();
+    const linhas = parseCsv(texto);
+    // pular cabeçalho (linha 0) e devolver linhas
+    return linhas.slice(1).map(r => {
+      // r = [Descrição, Vencimento, Valor, Data Pgto, Valor Pago, Banco Orig, Banco Dest, ...]
+      return [0,1,2,3,4,5,6,7].map(i => r[i] || '');
     });
-  });
+  } catch (e) {
+    clearTimeout(timeoutId);
+    if (e.name === 'AbortError') throw new Error(`Timeout (20s) em "${sheetName}"`);
+    throw new Error(`Falhou "${sheetName}": ${e.message}`);
+  }
 }
 
 // ==================== PARSER DE BLOCOS ====================
