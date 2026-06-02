@@ -226,11 +226,38 @@ button.ghost { background: transparent; color: var(--text); border: 1px solid va
 <script>
 const PJ_ID = '1_F-skyPq1lxkAvGZXo-xpnZuIZcP5GxJ0EZwfpER5Qc';
 const PF_ID = '1PvGrNSWF_QSuKjVPM75SgrCkDixqt9GPND0_RnwccI4';
-const MESES = ['Janeiro 2026','Fevereiro 2026','Março 2026','Abril 2026','Maio 2026'];
-const MESES_SHORT = ['Jan','Fev','Mar','Abr','Mai'];
+// ==================== MESES (descoberta automática) ====================
+// Não precisa mais escrever os meses na mão. O dashboard gera todos os meses
+// possíveis do ano e descobre sozinho quais abas existem na planilha.
+// Assim, basta criar uma aba nova ("Junho 2026", "Julho 2026"...) que ela aparece.
+const NOMES_MES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+                   'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const SHORT_MES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const ANO_INICIAL = 2026; // primeiro ano com planilha
+
+function gerarCandidatos() {
+  const anoAtual = Math.max(new Date().getFullYear(), ANO_INICIAL);
+  const lista = [];
+  // todos os meses, de ANO_INICIAL até o ano atual
+  for (let ano = ANO_INICIAL; ano <= anoAtual; ano++) {
+    for (let m = 0; m < 12; m++) {
+      lista.push({ nome: `${NOMES_MES[m]} ${ano}`, short: SHORT_MES[m], ordem: ano*12 + m });
+    }
+  }
+  // folga: Jan e Fev do ano seguinte (pra virada de ano não quebrar)
+  for (let m = 0; m < 2; m++) {
+    lista.push({ nome: `${NOMES_MES[m]} ${anoAtual+1}`, short: SHORT_MES[m], ordem: (anoAtual+1)*12 + m });
+  }
+  return lista;
+}
+const CANDIDATOS = gerarCandidatos();
+
+// Preenchidos em tempo real conforme descobrimos quais abas existem:
+let MESES = [];        // ex: ['Janeiro 2026', ... 'Junho 2026']
+let MESES_SHORT = [];  // ex: ['Jan', ... 'Jun']
 
 let dadosPJ = {}, dadosPF = {};
-let mesSelecionado = 'Maio 2026';
+let mesSelecionado = null;
 let abaAtiva = 'pj';
 let chartEvolucao = null;
 
@@ -372,10 +399,23 @@ async function carregar(forceNotify) {
   document.getElementById('conteudo').style.display = 'none';
 
   try {
+    // O Google tem uma manha chata: quando pedimos uma aba que NÃO existe,
+    // ele devolve a 1ª aba (Janeiro) fingindo ser aquele mês — em vez de dar erro.
+    // Truque: pedimos uma aba com nome impossível pra capturar essa "resposta falsa".
+    // Depois, qualquer mês que vier idêntico a essa resposta = aba inexistente, descartado.
+    const sentinela = '___inexistente_' + Math.random().toString(36).slice(2);
+    const [fakePJrows, fakePFrows] = await Promise.all([
+      fetchAba(PJ_ID, sentinela).catch(() => []),
+      fetchAba(PF_ID, sentinela).catch(() => []),
+    ]);
+    const sigFakePJ = JSON.stringify(fakePJrows);
+    const sigFakePF = JSON.stringify(fakePFrows);
+    const mesDefault = `${NOMES_MES[0]} ${ANO_INICIAL}`; // Janeiro do ano inicial = a aba padrão (real)
+
     const promessas = [];
-    for (const mes of MESES) {
-      promessas.push(fetchAba(PJ_ID, mes).then(r => ({mes, tipo:'pj', rows:r})).catch(()=>null));
-      promessas.push(fetchAba(PF_ID, mes).then(r => ({mes, tipo:'pf', rows:r})).catch(()=>null));
+    for (const c of CANDIDATOS) {
+      promessas.push(fetchAba(PJ_ID, c.nome).then(r => ({mes:c.nome, tipo:'pj', rows:r})).catch(()=>null));
+      promessas.push(fetchAba(PF_ID, c.nome).then(r => ({mes:c.nome, tipo:'pf', rows:r})).catch(()=>null));
     }
     const todos = await Promise.allSettled(promessas);
 
@@ -383,9 +423,25 @@ async function carregar(forceNotify) {
     for (const p of todos) {
       if (p.status !== 'fulfilled' || !p.value) continue;
       const {mes, tipo, rows} = p.value;
+      if (!rows || rows.length === 0) continue; // aba vazia
+      const sigFake = tipo === 'pj' ? sigFakePJ : sigFakePF;
+      // Se a resposta é igual à "falsa" e NÃO é o Janeiro real, é uma aba que não existe
+      if (JSON.stringify(rows) === sigFake && mes !== mesDefault) continue;
       const parsed = parsearBlocos(rows);
       if (tipo === 'pj') dadosPJ[mes] = parsed;
       else dadosPF[mes] = parsed;
+    }
+
+    // Descobre quais meses realmente têm dados e monta a lista em ordem
+    const nomesComDados = new Set([...Object.keys(dadosPJ), ...Object.keys(dadosPF)]);
+    const disponiveis = CANDIDATOS.filter(c => nomesComDados.has(c.nome))
+                                  .sort((a, b) => a.ordem - b.ordem);
+    MESES = disponiveis.map(c => c.nome);
+    MESES_SHORT = disponiveis.map(c => c.short);
+
+    // Se nenhum mês estava selecionado (ou o selecionado sumiu), abre no mais recente
+    if (!mesSelecionado || !MESES.includes(mesSelecionado)) {
+      mesSelecionado = MESES.length ? MESES[MESES.length - 1] : null;
     }
 
     document.getElementById('lastUpdate').textContent = 'Atualizado às ' + new Date().toLocaleTimeString('pt-BR');
@@ -405,7 +461,8 @@ function montarPickerMeses() {
   MESES.forEach((mes, i) => {
     const btn = document.createElement('button');
     btn.className = 'month-btn' + (mes === mesSelecionado ? ' active' : '');
-    btn.textContent = MESES_SHORT[i] + ' / 2026';
+    const ano = mes.split(' ').pop(); // pega o ano do nome da aba
+    btn.textContent = MESES_SHORT[i] + ' / ' + ano;
     btn.onclick = () => { mesSelecionado = mes; montarPickerMeses(); renderizar(); };
     picker.appendChild(btn);
   });
