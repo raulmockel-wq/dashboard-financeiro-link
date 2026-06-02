@@ -203,8 +203,36 @@ button.ghost { background: transparent; color: var(--text); border: 1px solid va
 .tag.pago { background: rgba(74,222,128,0.15); color: var(--green); }
 .tag.pendente { background: rgba(251,191,36,0.15); color: var(--warn); }
 
+/* Seções colapsáveis (tabelas detalhadas) */
+details.section > summary { list-style: none; cursor: pointer; }
+details.section > summary::-webkit-details-marker { display: none; }
+details.section > summary.section-title::after { content: '▾'; margin-left: 10px;
+  color: var(--muted); transition: transform 0.2s; font-size: 12px; }
+details.section[open] > summary.section-title::after { transform: rotate(180deg); }
+details.section > summary:hover { color: var(--text); }
+
 .footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--line);
   text-align: center; color: var(--muted); font-size: 11px; }
+
+/* ===== Mobile / celular ===== */
+@media (max-width: 640px) {
+  .container { padding: 16px 12px; }
+  header { margin-bottom: 18px; }
+  header h1 { font-size: 21px; }
+  header .sub { font-size: 12px; }
+  .tab-btn { padding: 10px 12px; font-size: 12.5px; }
+  .month-btn { padding: 7px 12px; font-size: 12px; }
+  .kpi { padding: 14px 16px; }
+  .kpi .value { font-size: 21px; }
+  .card { padding: 16px; }
+  .alert .val { font-size: 20px; }
+  .donut-wrap, .chart-box { height: 240px; }
+  /* tabela detalhada: rola pro lado em vez de espremer */
+  .tbl { min-width: 600px; font-size: 12.5px; }
+  .tbl th, .tbl td { padding: 8px 9px; }
+  .scroll-hint { display: block; }
+}
+.scroll-hint { display: none; color: var(--muted); font-size: 11px; margin: 4px 2px 0; }
 </style>
 </head>
 <body>
@@ -820,18 +848,21 @@ function renderTipo(tipo, dados) {
 
 
 function renderTabelaBloco(titulo, tagClass, bloco) {
+  // Aberto por padrão em telas grandes; fechado no celular pra não poluir
+  const aberto = window.innerWidth > 700 ? ' open' : '';
   if (!bloco || bloco.linhas.length === 0) {
-    return `<div class="section">
-      <div class="section-title">${titulo}</div>
+    return `<details class="section"${aberto}>
+      <summary class="section-title">${titulo}</summary>
       <div class="card"><div class="empty">Nenhum lançamento neste bloco.</div></div>
-    </div>`;
+    </details>`;
   }
   const tipoEmoji = tagClass === 'fixa' ? '📌' : '✨';
-  let html = `<div class="section">
-    <div class="section-title">
-      <span>${tipoEmoji} ${titulo}</span>
-      <span class="right">Total declarado: ${fmtBR2(bloco.declaradoPago)}</span>
-    </div>
+  let html = `<details class="section"${aberto}>
+    <summary class="section-title">
+      <span>${tipoEmoji} ${titulo} <span style="color:var(--muted);font-weight:500">(${bloco.linhas.length})</span></span>
+      <span class="right">Total: ${fmtBR2(bloco.declaradoPago)}</span>
+    </summary>
+    <div class="scroll-hint">← deslize pro lado pra ver tudo →</div>
     <div class="card" style="padding: 0; overflow-x: auto;">
     <table class="tbl">
     <thead><tr>
@@ -868,7 +899,7 @@ function renderTabelaBloco(titulo, tagClass, bloco) {
     <td class="num">${fmtBR2(bloco.declaradoPago)}</td>
     <td></td>
   </tr>
-  </tbody></table></div></div>`;
+  </tbody></table></div></details>`;
   return html;
 }
 
