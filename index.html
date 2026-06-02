@@ -214,6 +214,10 @@ details.section > summary:hover { color: var(--text); }
 .footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--line);
   text-align: center; color: var(--muted); font-size: 11px; }
 
+/* Trava: nada empurra a página pro lado */
+html, body { max-width: 100%; overflow-x: hidden; }
+.scroll-hint { display: none; }
+
 /* ===== Mobile / celular ===== */
 @media (max-width: 640px) {
   .container { padding: 16px 12px; }
@@ -227,12 +231,17 @@ details.section > summary:hover { color: var(--text); }
   .card { padding: 16px; }
   .alert .val { font-size: 20px; }
   .donut-wrap, .chart-box { height: 240px; }
-  /* tabela detalhada: rola pro lado em vez de espremer */
-  .tbl { min-width: 600px; font-size: 12.5px; }
-  .tbl th, .tbl td { padding: 8px 9px; }
-  .scroll-hint { display: block; }
+  /* tabela detalhada cabe na tela: esconde colunas secundárias e trava larguras */
+  .mhide { display: none !important; width: 0 !important; padding: 0 !important; }
+  .tbl { min-width: 0; width: 100%; table-layout: fixed; font-size: 12.5px; }
+  .tbl th, .tbl td { padding: 8px 5px; }
+  .tbl th { font-size: 9.5px; white-space: normal; line-height: 1.2; }
+  .tbl th:first-child, .tbl td:first-child { width: 44%; white-space: normal; overflow-wrap: anywhere; }
+  .col-data { width: 58px; }
+  .col-val  { width: 70px; }
+  .col-st   { width: 66px; }
+  .tag { font-size: 9px; padding: 2px 6px; }
 }
-.scroll-hint { display: none; color: var(--muted); font-size: 11px; margin: 4px 2px 0; }
 </style>
 </head>
 <body>
@@ -862,13 +871,12 @@ function renderTabelaBloco(titulo, tagClass, bloco) {
       <span>${tipoEmoji} ${titulo} <span style="color:var(--muted);font-weight:500">(${bloco.linhas.length})</span></span>
       <span class="right">Total: ${fmtBR2(bloco.declaradoPago)}</span>
     </summary>
-    <div class="scroll-hint">← deslize pro lado pra ver tudo →</div>
     <div class="card" style="padding: 0; overflow-x: auto;">
     <table class="tbl">
     <thead><tr>
-      <th>Descrição</th><th>Vencimento</th><th>Pago em</th>
-      <th>Origem</th><th>Destino</th>
-      <th class="num">Valor</th><th class="num">Pago</th><th>Status</th>
+      <th>Descrição</th><th class="col-data">Vencimento</th><th class="mhide">Pago em</th>
+      <th class="mhide">Origem</th><th class="mhide">Destino</th>
+      <th class="num col-val">Valor</th><th class="num mhide">Pago</th><th class="col-st">Status</th>
     </tr></thead><tbody>`;
   for (const l of bloco.linhas) {
     const pago = l.valorPago > 0;
@@ -879,24 +887,24 @@ function renderTabelaBloco(titulo, tagClass, bloco) {
     html += `<tr class="${trClass}">
       <td>${escapeHtml(l.descricao)}</td>
       <td class="muted">${escapeHtml(l.vencimento)}</td>
-      <td class="muted">${escapeHtml(l.dataPgto)}</td>
-      <td class="muted">${escapeHtml(l.bancoOrigem)}</td>
-      <td class="muted">${escapeHtml(l.bancoDestino)}</td>
+      <td class="muted mhide">${escapeHtml(l.dataPgto)}</td>
+      <td class="muted mhide">${escapeHtml(l.bancoOrigem)}</td>
+      <td class="muted mhide">${escapeHtml(l.bancoDestino)}</td>
       <td class="num">${l.valorPrevisto > 0 ? fmtBR2(l.valorPrevisto) : '—'}</td>
-      <td class="num">${l.valorPago > 0 ? fmtBR2(l.valorPago) : '—'}</td>
+      <td class="num mhide">${l.valorPago > 0 ? fmtBR2(l.valorPago) : '—'}</td>
       <td>${status}</td>
     </tr>`;
   }
   html += `<tr class="total">
     <td colspan="5">SOMA DAS ${bloco.linhas.length} LINHAS</td>
     <td class="num">${fmtBR2(bloco.somaPrev)}</td>
-    <td class="num">${fmtBR2(bloco.somaPago)}</td>
+    <td class="num mhide">${fmtBR2(bloco.somaPago)}</td>
     <td></td>
   </tr>
   <tr class="total" style="background: var(--bg2);">
     <td colspan="5">TOTAL DECLARADO NA PLANILHA</td>
     <td class="num">${fmtBR2(bloco.declaradoPrev)}</td>
-    <td class="num">${fmtBR2(bloco.declaradoPago)}</td>
+    <td class="num mhide">${fmtBR2(bloco.declaradoPago)}</td>
     <td></td>
   </tr>
   </tbody></table></div></details>`;
