@@ -144,6 +144,51 @@ button.ghost { background: transparent; color: var(--text); border: 1px solid va
 
 /* Chart */
 .chart-box { height: 300px; position: relative; }
+.chart-box.sm { height: 260px; }
+
+/* Contas do dia/semana */
+.alerts { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px; margin-bottom: 16px; }
+.alert { border-radius: 12px; padding: 16px 18px; border: 1px solid var(--line);
+  background: var(--panel); }
+.alert .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.alert .ttl { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+.alert .cnt { font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 10px;
+  background: var(--panel2); }
+.alert .val { font-size: 22px; font-weight: 800; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.alert ul { list-style: none; margin-top: 10px; font-size: 12px; max-height: 150px; overflow-y: auto; }
+.alert li { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0;
+  border-top: 1px solid var(--line); color: var(--muted); }
+.alert li .d { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.alert li .v { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.alert.red    { border-left: 4px solid var(--red); }   .alert.red .val { color: var(--red); }
+.alert.orange { border-left: 4px solid #fb923c; }      .alert.orange .val { color: #fb923c; }
+.alert.yellow { border-left: 4px solid var(--warn); }  .alert.yellow .val { color: var(--warn); }
+.alert.green  { border-left: 4px solid var(--green); } .alert.green .val { color: var(--green); }
+.alert.red .cnt { color: var(--red); } .alert.orange .cnt { color: #fb923c; } .alert.yellow .cnt { color: var(--warn); }
+
+/* Barras de categoria / top gastos */
+.catbar { margin: 11px 0; }
+.catbar .l { display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 12.5px; margin-bottom: 5px; gap: 10px; }
+.catbar .l .nm { color: var(--text); font-weight: 600; }
+.catbar .l .vl { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.catbar .l .vl b { color: var(--text); }
+.catbar .track { height: 9px; background: var(--panel2); border-radius: 6px; overflow: hidden; }
+.catbar .fill { height: 100%; border-radius: 6px; transition: width 0.4s ease; }
+
+/* Delta mês a mês */
+.delta { font-size: 12px; font-weight: 800; margin-top: 4px; display: inline-flex; gap: 3px; }
+.delta.up   { color: var(--red); }
+.delta.down { color: var(--green); }
+.delta.flat { color: var(--muted); }
+
+/* Donut com total no meio */
+.donut-wrap { position: relative; height: 260px; }
+.donut-center { position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; pointer-events: none; }
+.donut-center .big { font-size: 21px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.donut-center .cap { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
 
 /* Search */
 .search-bar { width: 100%; background: var(--panel2); border: 1px solid var(--line);
@@ -193,12 +238,14 @@ button.ghost { background: transparent; color: var(--text); border: 1px solid va
   <!-- ABA PJ -->
   <div class="tab-content" id="tab-pj">
     <div id="kpisPJ" class="kpi-grid"></div>
+    <div id="visaoPJ"></div>
     <div id="conteudoPJ"></div>
   </div>
 
   <!-- ABA PF -->
   <div class="tab-content" id="tab-pf" style="display:none;">
     <div id="kpisPF" class="kpi-grid"></div>
+    <div id="visaoPF"></div>
     <div id="conteudoPF"></div>
   </div>
 
@@ -206,10 +253,11 @@ button.ghost { background: transparent; color: var(--text); border: 1px solid va
   <div class="tab-content" id="tab-resumo" style="display:none;">
     <div id="kpisResumo" class="kpi-grid"></div>
     <div class="card">
-      <h3>📈 Evolução mensal</h3>
-      <div class="hint">Comparativo PJ vs PF dos últimos meses</div>
+      <h3>📈 Evolução mês a mês</h3>
+      <div class="hint">Quanto saiu por mês — Link (PJ) vs Raul (PF)</div>
       <div class="chart-box"><canvas id="grafEvolucao"></canvas></div>
     </div>
+    <div id="visaoAno"></div>
   </div>
 </div>
 
@@ -468,11 +516,212 @@ function montarPickerMeses() {
   });
 }
 
+// ==================== CATEGORIAS / ONDE VAI O DINHEIRO ====================
+// Classifica cada lançamento num grupo pela descrição (heurística por palavras).
+// A ordem importa: o primeiro que casar vence.
+const CATEGORIAS = [
+  { nome: 'Equipe & Salários',   cor: '#60a5fa', re: /maicon|samuel|daniel|ramon|paulo|paulinho|fran(?!ce)|j[uú]lia|sal[aá]rio|diarista|auxilio|vale adiant|f[eé]rias|adiantamento|motoboy/i },
+  { nome: 'Impostos & Taxas',    cor: '#f87171', re: /inss|fgts|imposto|tarifa|anuidade|sindicato|\btaxa|\bdas\b|simples|darf|honor/i },
+  { nome: 'Moto & Combustível',  cor: '#fbbf24', re: /gasolina|combust|[oó]leo|\bmoto\b|aluguel moto/i },
+  { nome: 'Aluguel',             cor: '#fb7185', re: /aluguel/i },
+  { nome: 'Cartões',             cor: '#f472b6', re: /cart[aã]o|nubank|fatura/i },
+  { nome: 'Contas & Serviços',   cor: '#38bdf8', re: /\bluz\b|[aá]gua|telefone|\bvivo\b|\boi\b|\btim\b|internet|lume|icloud|\bnex\b|canva|facebook|google|claro|spotify|recarga|celular|software|assinatura/i },
+  { nome: 'Fornecedores & Peças',cor: '#4ade80', re: /mmr|inform[aá]tica|import|bateria|mem[oó]ria|notebook|selfa|pe[cç]a|\btela\b|fornecedor|bueno|renato|plug|placa|display|compra/i },
+  { nome: 'Saúde',               cor: '#2dd4bf', re: /unimed|sa[uú]de|farm[aá]cia|m[eé]dico|odonto|pilates|academia|smart\s?fit|\bgym\b/i },
+  { nome: 'Escola & Educação',   cor: '#fcd34d', re: /adventista|aventista|escola|col[eé]gio|faculdade|mensalidade escola|material escolar|matr[ií]cula/i },
+  { nome: 'Carros & IPVA',       cor: '#fb923c', re: /ipva|licenciamento|licen[cç]a|parcela carro|byd|tiguan|mercedes|seguro auto|ve[ií]culo/i },
+  { nome: 'Imóveis & Consórcios',cor: '#a3e635', re: /terreno|ademilar|cons[oó]rcio|im[oó]vel|\blote\b|financiamento imob|porto seguro consorcio/i },
+  { nome: 'Casa & Família',      cor: '#fda4af', re: /dona |diarista|empregada|faxina|lava lou[cç]|geladeira|fog[aã]o|ar.?condicionado|m[oó]veis|mercado|supermerc/i },
+  { nome: 'Lazer & Viagem',      cor: '#e879f9', re: /hotel|viagem|fazenda park|passeio|cinema|restaurante|\blazer\b|netflix|disney/i },
+  { nome: 'Contador',            cor: '#a78bfa', re: /contador|contabil/i },
+  { nome: 'Reservas & Invest.',  cor: '#818cf8', re: /reserva|invest|inves[ei]t|inestim|aplica[cç]|poupan/i },
+  { nome: 'Retiradas & Sócios',  cor: '#c084fc', re: /retirada|pr[oó]\s?labore|s[oó]cio|distribui[cç]/i },
+];
+const COR_OUTROS = '#64748b';
+
+function categorizar(desc) {
+  const d = String(desc || '');
+  for (const c of CATEGORIAS) if (c.re.test(d)) return c;
+  return { nome: 'Outros', cor: COR_OUTROS };
+}
+
+// "valor do mês" de uma linha: o que foi pago; se ainda não pagou, o previsto
+function valorLinha(l) { return l.valorPago > 0 ? l.valorPago : l.valorPrevisto; }
+
+// Movimentação total do mês (pago + a pagar) — usado em trends pra não "zerar" o mês corrente
+function movMesTotal(m) {
+  if (!m) return 0;
+  let s = 0;
+  for (const bloco of [m.fixas, m.aleatorias])
+    for (const l of bloco.linhas) { const v = valorLinha(l); if (v > 0) s += v; }
+  return s;
+}
+
+// Soma os gastos por categoria de um mês (ou de vários, acumulando no mapa)
+function acumularCategorias(m, mapa) {
+  if (!m) return mapa;
+  for (const bloco of [m.fixas, m.aleatorias]) {
+    for (const l of bloco.linhas) {
+      const v = valorLinha(l);
+      if (v <= 0) continue;
+      const c = categorizar(l.descricao);
+      if (!mapa[c.nome]) mapa[c.nome] = { nome: c.nome, cor: c.cor, total: 0 };
+      mapa[c.nome].total += v;
+    }
+  }
+  return mapa;
+}
+function categoriasOrdenadas(mapa) {
+  return Object.values(mapa).filter(c => c.total > 0).sort((a, b) => b.total - a.total);
+}
+
+// ==================== DATAS / CONTAS DO DIA ====================
+function parseVenc(s) {
+  const str = String(s || '').trim();
+  const mm = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (!mm) return null;
+  let [, d, m, y] = mm;
+  y = y.length === 2 ? '20' + y : y;
+  const dt = new Date(+y, +m - 1, +d);
+  return isNaN(dt) ? null : dt;
+}
+function hojeZero() { const h = new Date(); h.setHours(0, 0, 0, 0); return h; }
+
+function contasDoDia(m) {
+  const res = { atrasadas: [], hoje: [], semana: [] };
+  if (!m) return res;
+  const hj = hojeZero();
+  const lim = new Date(hj); lim.setDate(lim.getDate() + 7);
+  for (const bloco of [m.fixas, m.aleatorias]) {
+    for (const l of bloco.linhas) {
+      if (l.valorPago > 0 || l.valorPrevisto <= 0) continue; // já pago ou sem valor
+      const venc = parseVenc(l.vencimento);
+      if (!venc) continue;
+      const item = { desc: l.descricao, venc: l.vencimento, valor: l.valorPrevisto, d: venc };
+      if (venc < hj) res.atrasadas.push(item);
+      else if (venc.getTime() === hj.getTime()) res.hoje.push(item);
+      else if (venc <= lim) res.semana.push(item);
+    }
+  }
+  for (const k in res) res[k].sort((a, b) => a.d - b.d);
+  return res;
+}
+
+// ==================== GRÁFICOS (registro p/ destruir antes de recriar) ====================
+const chartReg = {};
+function setDonut(id, cats) {
+  if (chartReg[id]) chartReg[id].destroy();
+  const el = document.getElementById(id);
+  if (!el) return;
+  chartReg[id] = new Chart(el, {
+    type: 'doughnut',
+    data: { labels: cats.map(c => c.nome),
+            datasets: [{ data: cats.map(c => Math.round(c.total)),
+                         backgroundColor: cats.map(c => c.cor), borderColor: '#131829', borderWidth: 2 }] },
+    options: { responsive: true, maintainAspectRatio: false, cutout: '64%',
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ' ' + ctx.label + ': ' + fmtBR2(ctx.raw) } } } }
+  });
+}
+
+function barrasCategorias(cats, total) {
+  if (!cats.length) return '<div class="empty">Sem lançamentos pra mostrar.</div>';
+  return cats.map(c => {
+    const pct = total > 0 ? (c.total / total * 100) : 0;
+    return `<div class="catbar">
+      <div class="l"><span class="nm">${escapeHtml(c.nome)}</span>
+        <span class="vl"><b>${fmtBR(c.total)}</b> · ${pct.toFixed(0)}%</span></div>
+      <div class="track"><div class="fill" style="width:${pct.toFixed(1)}%; background:${c.cor};"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function listaTopGastos(m, n) {
+  if (!m) return [];
+  const linhas = [];
+  for (const bloco of [m.fixas, m.aleatorias])
+    for (const l of bloco.linhas) { const v = valorLinha(l); if (v > 0) linhas.push({ desc: l.descricao, v, cor: categorizar(l.descricao).cor }); }
+  return linhas.sort((a, b) => b.v - a.v).slice(0, n);
+}
+
+function deltaHtml(atual, anterior, nomeAnterior) {
+  if (!anterior || anterior <= 0) return '';
+  const dif = atual - anterior;
+  const pct = dif / anterior * 100;
+  const cls = Math.abs(pct) < 1 ? 'flat' : (dif > 0 ? 'up' : 'down');
+  const seta = cls === 'flat' ? '→' : (dif > 0 ? '▲' : '▼');
+  return `<span class="delta ${cls}">${seta} ${Math.abs(pct).toFixed(0)}% vs ${nomeAnterior}</span>`;
+}
+
 // ==================== RENDER ====================
 function renderizar() {
   renderTipo('pj', dadosPJ);
   renderTipo('pf', dadosPF);
   renderResumo();
+}
+
+function shortDoMes(nomeMes) {
+  const i = MESES.indexOf(nomeMes);
+  return i >= 0 ? MESES_SHORT[i] : nomeMes.split(' ')[0].slice(0, 3);
+}
+
+// Constrói a "Visão do mês": contas do dia + onde vai o dinheiro + top gastos
+function renderVisao(tipo, dados) {
+  const upper = tipo.toUpperCase();
+  const cont = document.getElementById('visao' + upper);
+  const m = dados[mesSelecionado];
+  if (!m) { cont.innerHTML = ''; return; }
+
+  // 1) Contas do dia/semana
+  const cd = contasDoDia(m);
+  const soma = arr => arr.reduce((s, x) => s + x.valor, 0);
+  const li = arr => arr.slice(0, 6).map(x =>
+    `<li><span class="d">${escapeHtml(x.desc)}</span><span class="v">${fmtBR(x.valor)} · ${escapeHtml(x.venc)}</span></li>`).join('');
+  const cardAlerta = (cls, emoji, ttl, arr, vazio) => `
+    <div class="alert ${arr.length ? cls : 'green'}">
+      <div class="top"><span class="ttl">${emoji} ${ttl}</span><span class="cnt">${arr.length}</span></div>
+      <div class="val">${fmtBR(soma(arr))}</div>
+      ${arr.length ? `<ul>${li(arr)}${arr.length > 6 ? `<li><span class="d">+ ${arr.length - 6} conta(s)…</span><span class="v"></span></li>` : ''}</ul>` : `<div class="hint" style="margin-top:8px">${vazio}</div>`}
+    </div>`;
+
+  // 2) Onde vai o dinheiro (categorias)
+  const cats = categoriasOrdenadas(acumularCategorias(m, {}));
+  const totalMes = cats.reduce((s, c) => s + c.total, 0);
+  const top = listaTopGastos(m, 5);
+  const maxTop = top.length ? top[0].v : 1;
+
+  cont.innerHTML = `
+    <div class="section-title" style="margin-top:4px">🔔 Contas a pagar — ${escapeHtml(mesSelecionado)}</div>
+    <div class="alerts">
+      ${cardAlerta('red', '🔴', 'Atrasadas', cd.atrasadas, 'Nada atrasado 🎉')}
+      ${cardAlerta('orange', '🟠', 'Vencem hoje', cd.hoje, 'Nada vence hoje')}
+      ${cardAlerta('yellow', '🟡', 'Próximos 7 dias', cd.semana, 'Nada nos próximos 7 dias')}
+    </div>
+
+    <div class="row two">
+      <div class="card">
+        <h3>🍩 Onde está indo o dinheiro</h3>
+        <div class="hint">Gastos do mês agrupados por tipo</div>
+        <div class="donut-wrap">
+          <canvas id="donut-${tipo}"></canvas>
+          <div class="donut-center"><div class="big">${fmtBR(totalMes)}</div><div class="cap">no mês</div></div>
+        </div>
+        <div style="margin-top:14px">${barrasCategorias(cats.slice(0, 8), totalMes)}</div>
+      </div>
+      <div class="card">
+        <h3>📊 Top 5 maiores gastos</h3>
+        <div class="hint">As maiores saídas do mês</div>
+        <div style="margin-top:6px">
+          ${top.length ? top.map(t => `
+            <div class="catbar">
+              <div class="l"><span class="nm">${escapeHtml(t.desc)}</span><span class="vl"><b>${fmtBR(t.v)}</b></span></div>
+              <div class="track"><div class="fill" style="width:${(t.v / maxTop * 100).toFixed(1)}%; background:${t.cor};"></div></div>
+            </div>`).join('') : '<div class="empty">Sem gastos neste mês ainda.</div>'}
+        </div>
+      </div>
+    </div>`;
+
+  setDonut('donut-' + tipo, cats.slice(0, 9));
 }
 
 function renderTipo(tipo, dados) {
@@ -483,6 +732,7 @@ function renderTipo(tipo, dados) {
   if (oldWarn) oldWarn.remove();
   if (!m) {
     document.getElementById('kpis' + upper).innerHTML = '<div class="empty">Sem dados para esse mês.</div>';
+    document.getElementById('visao' + upper).innerHTML = '';
     document.getElementById('conteudo' + upper).innerHTML = '';
     return;
   }
@@ -502,6 +752,13 @@ function renderTipo(tipo, dados) {
       }
     }
   }
+
+  // Movimentação do mês (pago + a pagar) e comparação com o mês anterior
+  const movMes = movMesTotal(m);
+  const idxMes = MESES.indexOf(mesSelecionado);
+  const mesAnt = idxMes > 0 ? MESES[idxMes - 1] : null;
+  const movAnt = mesAnt ? movMesTotal(dados[mesAnt]) : 0;
+  const deltaMov = mesAnt ? deltaHtml(movMes, movAnt, shortDoMes(mesAnt)) : '';
 
   // Divergências entre nossa soma e total declarado pela planilha
   const diffFixas = Math.round((m.fixas.somaPago - m.fixas.declaradoPago) * 100) / 100;
@@ -535,6 +792,11 @@ function renderTipo(tipo, dados) {
       <div class="value">${fmtBR2(pendenteValor)}</div>
       <div class="sub">${pendenteContas} contas a pagar</div>
     </div>
+    <div class="kpi ${deltaMov.includes('up') ? 'red' : 'green'}">
+      <div class="label">🧾 Movimentação do mês</div>
+      <div class="value">${fmtBR2(movMes)}</div>
+      <div class="sub">${deltaMov || 'pago + a pagar'}</div>
+    </div>
   `;
 
   // Renderiza avisos de divergência
@@ -545,6 +807,9 @@ function renderTipo(tipo, dados) {
     document.getElementById('kpis' + upper).insertAdjacentHTML('afterend',
       `<div id="warn-${tipo}">${warnHtml}</div>`);
   }
+
+  // Visão intuitiva (contas do dia + onde vai o dinheiro + top gastos)
+  renderVisao(tipo, dados);
 
   // Tabelas detalhadas
   let html = '';
@@ -621,15 +886,9 @@ function renderResumo() {
       <div class="value">${fmtBR2(pagoPJ + pagoPF)}</div></div>
   `;
 
-  // Gráfico evolução
-  const evoPJ = MESES.map(mes => {
-    const d = dadosPJ[mes];
-    return d ? d.totalGeralDeclaradoPago : 0;
-  });
-  const evoPF = MESES.map(mes => {
-    const d = dadosPF[mes];
-    return d ? d.totalGeralDeclaradoPago : 0;
-  });
+  // Gráfico evolução — usa movimentação (pago + a pagar) pra o mês corrente não cair a zero
+  const evoPJ = MESES.map(mes => movMesTotal(dadosPJ[mes]));
+  const evoPF = MESES.map(mes => movMesTotal(dadosPF[mes]));
   if (chartEvolucao) chartEvolucao.destroy();
   chartEvolucao = new Chart(document.getElementById('grafEvolucao'), {
     type: 'line',
@@ -652,12 +911,73 @@ function renderResumo() {
       }
     }
   });
+  chartReg['evolucao'] = chartEvolucao;
+
+  renderAno();
+}
+
+// Visão do ANO: total acumulado + onde foi o dinheiro no período todo
+function renderAno() {
+  const cont = document.getElementById('visaoAno');
+  if (!MESES.length) { cont.innerHTML = ''; return; }
+
+  // Totais do ano (pago) por perspectiva
+  let anoPJ = 0, anoPF = 0;
+  const mapaCat = {};            // categorias somando PJ + PF do ano todo
+  const porMesPJ = [], porMesPF = [];
+  for (const mes of MESES) {
+    const dPJ = dadosPJ[mes], dPF = dadosPF[mes];
+    anoPJ += dPJ ? dPJ.totalGeralDeclaradoPago : 0;
+    anoPF += dPF ? dPF.totalGeralDeclaradoPago : 0;
+    acumularCategorias(dPJ, mapaCat);
+    acumularCategorias(dPF, mapaCat);
+    porMesPJ.push(movMesTotal(dPJ));
+  }
+  const cats = categoriasOrdenadas(mapaCat);
+  const totalCat = cats.reduce((s, c) => s + c.total, 0);
+
+  // mês de maior movimentação (Link)
+  let maxIdx = 0; porMesPJ.forEach((v, i) => { if (v > porMesPJ[maxIdx]) maxIdx = i; });
+  const mesPico = MESES.length ? MESES_SHORT[maxIdx] : '—';
+  const periodo = MESES.length ? `${MESES_SHORT[0]} a ${MESES_SHORT[MESES.length-1]}` : '';
+
+  cont.innerHTML = `
+    <div class="section-title" style="margin-top:26px">📅 Visão do ano — ${escapeHtml(periodo)} (${MESES.length} ${MESES.length>1?'meses':'mês'})</div>
+    <div class="kpi-grid">
+      <div class="kpi blue"><div class="label">🏢 Link (PJ) no ano</div><div class="value">${fmtBR(anoPJ)}</div><div class="sub">pago acumulado</div></div>
+      <div class="kpi purple"><div class="label">👤 Raul (PF) no ano</div><div class="value">${fmtBR(anoPF)}</div><div class="sub">pago acumulado</div></div>
+      <div class="kpi green"><div class="label">💰 Total geral no ano</div><div class="value">${fmtBR(anoPJ + anoPF)}</div><div class="sub">Link + Raul</div></div>
+      <div class="kpi yellow"><div class="label">🔺 Mês que mais saiu (Link)</div><div class="value">${mesPico}</div><div class="sub">${fmtBR(porMesPJ[maxIdx]||0)}</div></div>
+    </div>
+    <div class="row two">
+      <div class="card">
+        <h3>🍩 Onde foi o dinheiro no ano</h3>
+        <div class="hint">Link + Raul somados no período</div>
+        <div class="donut-wrap">
+          <canvas id="donut-ano"></canvas>
+          <div class="donut-center"><div class="big">${fmtBR(totalCat)}</div><div class="cap">no período</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>🏆 Ranking de gastos do ano</h3>
+        <div class="hint">Maiores grupos no período</div>
+        <div style="margin-top:6px">${barrasCategorias(cats.slice(0, 9), totalCat)}</div>
+      </div>
+    </div>`;
+
+  setDonut('donut-ano', cats.slice(0, 9));
 }
 
 function trocarAba(t) {
   abaAtiva = t;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
   document.querySelectorAll('.tab-content').forEach(c => c.style.display = c.id === 'tab-' + t ? 'block' : 'none');
+  // Gráficos criados numa aba escondida podem não desenhar; ao exibir, redesenha
+  requestAnimationFrame(() => {
+    for (const id in chartReg) { try { chartReg[id].resize(); } catch (e) {} }
+    // O gráfico de linha não sobrevive bem ao "escondido" — recria com a aba visível
+    if (t === 'resumo' && MESES.length) renderResumo();
+  });
 }
 
 function escapeHtml(s) {
